@@ -1,4 +1,4 @@
-import {validateConfig,validateQuery,requestURLs,nextPage,normalizeReceipt,validateReceipt,filterReps,receiptCSV,errorMessage} from './model.mjs';
+import {validateConfig,validateQuery,requestURLs,nextPage,normalizeReceipt,validateReceipt,filterReps,receiptCSV,errorMessage} from './model.mjs?v=postal-matches-2';
 const $=id=>document.getElementById(id);
 let config,receipt,normalized,example,level='',busy=false,lastRequest=0;
 function el(tag,content,className) { const node=document.createElement(tag); if(content!=null)node.textContent=content; if(className)node.className=className; return node; }
