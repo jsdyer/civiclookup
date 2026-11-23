@@ -1,0 +1,15 @@
+{
+  "apiBase": "https://represent.opennorth.ca",
+  "defaultQuery": {"mode": "coordinates", "latitude": 45.4215, "longitude": -75.6972, "label": "Ottawa city centre"},
+  "presets": [
+    {"label": "Ottawa", "mode": "coordinates", "latitude": 45.4215, "longitude": -75.6972},
+    {"label": "Langley", "mode": "coordinates", "latitude": 49.1044, "longitude": -122.6604},
+    {"label": "Halifax", "mode": "coordinates", "latitude": 44.6488, "longitude": -63.5752}
+  ],
+  "pageSize": 100,
+  "maxPages": 4,
+  "timeoutMs": 20000,
+  "requestGapMs": 1100,
+  "importMaxBytes": 2000000,
+  "examplePath": "./data/example.json"
+}

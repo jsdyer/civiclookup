@@ -1,116 +1,44 @@
-# CoolCode browser tool template
+# Civic Lookup
 
-A starting point for independent tools at `coolcode.ca/<repo>/`: a working local-text
-example, responsive UI, Python standard-library build, Node tests, PR checks and Pages
-publication. No npm install is needed.
-
-## Using the example
+Find Canadian elected representatives and boundary records using [Represent by Open North](https://represent.opennorth.ca/). Public browser application at **https://coolcode.ca/civiclookup/**. No API account or secret is required.
 
 <!-- coolcode:guide -->
-The first occurrence of each trimmed line keeps its place. Compare the output with the original text before copying the result.
+Civic Lookup accepts **any syntactically valid Canadian postal code**, or latitude/longitude entered explicitly. Search is not restricted to the city presets. It shows source-reported representative names, offices, districts, assemblies, parties and public office contacts, with official profile/source links. Filter by government level or text, inspect boundary records, and save CSV or a complete JSON lookup receipt. JSON receipts can be reopened locally without sending them to a provider.
+
+The opening Ottawa city-centre result is a dated, real saved example, not a live lookup. A submitted lookup sends only the chosen coordinates or postal code (plus normal connection information) to Open North. There is no automatic geolocation or local search history. Receipts include the location query: review them before sharing.
+
+Postal codes can overlap districts. Both the provider's **centroid** and **concordance** matches are combined, deduplicated and labelled. Coordinates narrow the geographic match, but neither method guarantees current officeholders or complete municipal coverage. A retrieval date is not an election date or source-update date. Other boundary records may include historical district versions, school boards and statistical areas; records linked to a returned representative are labelled separately. Confirm contacts and electoral eligibility through the official institution or election authority.
+
+**Expand or customize:** edit `web/config.json`. Change `defaultQuery`, add/remove `presets` (any postal code or coordinates), or tune `pageSize`, `maxPages`, `timeoutMs`, `requestGapMs` and `importMaxBytes`. Presets only fill the form; pressing **Find representatives** submits it. No allowlist of places exists. To replace the saved public example, set `defaultQuery` to a public location and run `python3 scripts/refresh_example.py`, then commit `web/config.json` and `web/data/example.json`. The collector preserves the last-good file on an error and rejects truncated examples. Run the repository's **Browser tool · Check and publish** workflow after committing; main-branch changes build and publish automatically. There is no scheduled collector and no need to rerun it to search a new location.
 <!-- /coolcode:guide -->
 
-For a real tool, replace this paragraph with one or two plain-text sentences
-about an example, a limit or how to interpret the results. Keep the source,
-coverage, refresh behaviour and a worked example in this README as appropriate.
-When updating a tool, revise any details its behaviour has changed and keep the
-homepage's shorter data-source sentence in `tool.json` accurate.
-The hub imports the marked note into the catalogue README.
+## Sources, access and limits
 
-## One-time template setup
+- [Official Represent API reference](https://represent.opennorth.ca/api/), checked 2026-11-23: public JSON API, free up to **60 requests/minute**. More queries require contacting Open North. No registration/key is documented for this use.
+- [Represent privacy policy](https://represent.opennorth.ca/privacy/): describes provider request/IP logging. The app sets `credentials: omit` and `referrerPolicy: no-referrer`; postal codes and coordinates remain visible to the destination API.
+- Actual ordinary HTTPS requests to `/representatives/?point=45.4215,-75.6972&limit=100`, `/boundaries/?contains=45.4215,-75.6972&limit=100`, and `/postcodes/K1A0A6/` returned JSON with `Access-Control-Allow-Origin: *` during development on 2026-11-23. Browser/provider policy can change. Failed lookups leave the prior capture visible with an error, rather than displaying stale results as a new success.
+- Data attribution: **Represent by Open North**, together with each record's original public institution link. Boundary sources and reuse terms can differ between sets; follow the linked boundary-set records. This app does not relicense provider data or claim to be an official electoral service.
+- One postal lookup uses one request. A coordinate lookup retrieves representatives and boundaries separately and follows pagination. Requests are spaced by at least 1.1 seconds by default. A live capture reaching the page cap is visibly labelled partial; increase `maxPages` within documented bounds if needed. The default saved-example collector rejects partial results.
+- The API returns multiple historical boundary sets. We do not infer currentness from a district name or elect a single match arbitrarily. Representative-level labels are based on the reported office (MP, MLA/MPP/MNA/MHA, Mayor/Councillor/Reeve); unfamiliar titles remain **Other**.
 
-Enable **Settings → General → Template repository** here. This repository does not
-need Pages enabled: its workflow builds/tests but intentionally skips deployment.
-New copies also skip deployment until `scripts/init.py` sets the tool ID to match
-their repository name. This lets you create the repo before configuring Pages.
+## Configuration example
 
-## Start a new tool
-
-1. Select **Use this template → Create a new repository**, choose owner `jsdyer`,
-   a unique lowercase name such as `my-tool`, and public visibility.
-2. Clone the new repository. Use Python 3.12+ and Node 24+.
-3. Set the identity, using a slug that matches the repository name:
-
-```sh
-python3 scripts/init.py my-tool --title "My Tool" --description "Describe what this tool does."
+```json
+{"label":"Another public place","mode":"coordinates","latitude":49.2827,"longitude":-123.1207}
 ```
 
-Review the category, tags and icon in `tool.json`. `access: "browser"` tells the main
-catalogue that the tool works immediately without installation. `--owner` supports a different
-GitHub owner, but only projects owned by `jsdyer` inherit the CoolCode domain.
+Add that object to `presets`, or use `{"label":"Parliament postal example","mode":"postal","postalCode":"K1A0A6"}`. Existing defaults are approximate public city-centre coordinates, not a user's address. `apiBase` remains the official HTTPS Represent host to keep source provenance and pagination constrained. `examplePath` is a local `./data/name.json` file. Query-specific data comes from the provider, never from a built-in list of representative names.
 
-4. Replace the example in `web/` and its tests. Update the privacy explanation,
-   source attribution and README to describe the real tool.
-5. Test and preview:
+## Develop and verify
 
 ```sh
 node --test tests/*.test.mjs
 python3 -m unittest discover -s tests -v
 python3 scripts/build.py
-python3 -m http.server 8000 --directory dist
 ```
 
-Open `http://localhost:8000/`. The example trims lines, skips blanks and removes exact
-duplicates, preserving first-seen order and capitalization. It processes the text in tab memory. Update that explanation if your app behaves differently.
+The build copies only `web/` into `dist/`; no package install or live API access is needed. Transformations, validation, deduplication, CSV and receipt handling live in `web/model.mjs`; DOM/network behavior in `web/app.mjs`. Rendering uses text nodes, and source links accept HTTP(S) only. Live requests and imported files never cause arbitrary fetches: pagination must remain on the expected Represent endpoint.
 
-CI also tests the browser flow and mobile layout at a project subpath. Replace the
-sample assertions in `tests/browser_smoke.py` when implementing your own UI. To run
-that check locally (optional for ordinary preview):
+CI also runs `tests/browser_smoke.py` in Chromium at a project subpath, checking saved data, a custom lookup, filtering, exports, import, error preservation and the 390px layout. Browser network tests use deterministic API fixtures; the source checks above are separate real requests. The deployment workflow publishes on successful main-branch builds. GitHub Actions artifacts retain browser screenshots and reviewable site output for seven days; they are not an archive of user searches.
 
-```sh
-python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install -r tests/browser-requirements.txt
-python3 -m playwright install --with-deps chromium
-python3 tests/browser_smoke.py
-```
-
-Playwright is a test-only dependency; the app and its static build do not use it.
-
-## Publish and register
-
-When the actual tool is ready, in the **new tool repository** set **Settings → Pages → Build and deployment →
-Source → GitHub Actions**. Push to `main`, or manually run **Browser tool · Check and
-publish** after enabling Pages. If the initial deployment ran before Pages was enabled,
-enable it and rerun. PRs only check/build and provide a downloadable preview artifact.
-
-Keep `{{VISIT_COUNTER}}` in the page head and `{{ISSUE_LINK}}` in the footer when replacing the starter UI. The build enables these for initialized CoolCode repositories. The shared counter records aggregate opens on coolcode.ca by public tool ID. Toolbox inputs and URL parameters are excluded. The issue link opens a reporting form with the tool already selected.
-
-Keep app-owned asset paths and module imports relative. Check `https://coolcode.ca/my-tool/`.
-Do not add a CNAME or set `coolcode.ca` as this project's custom domain; the account
-site supplies it. Only successful `main` builds deploy.
-
-After verifying the app, copy the reviewed object from `tool.json` into `data/tools.json`
-in [the main site](https://github.com/jsdyer/jsdyer.github.io). Each tool still builds
-independently. Update the hub record when listing metadata changes; the hub is the
-authority for discovery. Ordinary app updates touch only this repository.
-
-The main site separates **Use in your browser** from **Install yourself**. An app
-that asks for a file is still a browser tool. Standalone Linux packages should start
-in their own repositories with their own build/release workflow, rather than copying
-this browser-only scaffold. Their hub record uses `access: "install"`, links to an
-installation guide, and includes `requirements`.
-
-## Files
-
-| Path | Purpose |
-| --- | --- |
-| `tool.json` | Page metadata and a ready-to-copy catalogue record |
-| `web/` | HTML, responsive CSS, DOM interactions and separate model logic |
-| `scripts/build.py` | Escape metadata and build `web/` into `dist/` |
-| `scripts/init.py` | Set a new project's identity |
-| `tests/` | Application and builder tests |
-| `.github/workflows/pages.yml` | Check PRs and publish successful main builds |
-| `AGENTS.md` | Instructions for future coding work |
-
-Namespace optional storage as `coolcode:<tool-id>:<key>`; CoolCode paths share a
-browser origin. Don't save pasted text/uploads by default. Document external APIs
-and send only the information needed for the selected action. Never embed secrets.
-
-Scheduled refresh is opt-in. Validate source data before deploying, display its date,
-and preserve the last good deployment on failure. Public-repository schedules can
-stop after 60 days without repository activity.
-
-Templates don't propagate future edits automatically. Adopt fixes explicitly and
-consider a versioned reusable workflow once several tools confirm the shared process.
-Choose and add the intended software license before distributing a new project.
+`tool.json` supplies the CoolCode catalogue metadata. `README.md`'s marked guide supplies the longer usage note. `dist/` is generated and must not be committed. This is a static GitHub Pages tool; there is no backend, user account, mail sending, or search-history service.

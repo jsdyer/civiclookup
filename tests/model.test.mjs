@@ -1,21 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanLines } from '../web/model.mjs';
-test('trims, removes blanks and preserves first-seen order', () => {
-  assert.deepEqual(cleanLines('  Halifax\nLangley\nHalifax\n\nVancouver  '), {
-    text: 'Halifax\nLangley\nVancouver', count: 3, removed: 1,
-  });
-});
-test('supports Windows and old Mac line endings', () => {
-  assert.equal(cleanLines('a\r\nb\ra').text, 'a\nb');
-});
-test('empty text and whitespace produce an empty result', () => {
-  assert.deepEqual(cleanLines(' \n\t'), { text: '', count: 0, removed: 0 });
-});
-test('preserves case and Unicode', () => {
-  assert.equal(cleanLines('Québec\nquébec\n東京\nQuébec').text, 'Québec\nquébec\n東京');
-});
-test('treats markup as ordinary text', () => {
-  assert.equal(cleanLines('<script>alert(1)</script>\n<script>alert(1)</script>').text, '<script>alert(1)</script>');
-});
-test('rejects non-text input', () => { assert.throws(() => cleanLines(null), TypeError); });
+import fs from 'node:fs';
+import {validateConfig,validateQuery,requestURLs,safeURL,providerURL,nextPage,levelOf,validateReceipt,normalizeReceipt,filterReps,receiptCSV,errorMessage} from '../web/model.mjs';
+const config=JSON.parse(fs.readFileSync(new URL('../web/config.json',import.meta.url)));
+const real=JSON.parse(fs.readFileSync(new URL('../web/data/example.json',import.meta.url)));
+const clone=value=>JSON.parse(JSON.stringify(value));
+function postalFixture(){const r=clone(real);r.query={mode:'postal',postalCode:'K1A0A6',label:'K1A 0A6'};r.responses={postal:{code:'K1A0A6',city:'OTTAWA',province:'ON',representatives_centroid:real.responses.representatives.objects,representatives_concordance:[real.responses.representatives.objects[0]],boundaries_centroid:real.responses.boundaries.objects,boundaries_concordance:[real.responses.boundaries.objects[0]]}};r.sourceURLs=['https://represent.opennorth.ca/postcodes/K1A0A6/'];return r;}
+test('normalizes arbitrary valid Canadian postal codes without a preset allowlist',()=>{assert.equal(validateQuery({mode:'postal',postalCode:' v6b 1a1 '}).postalCode,'V6B1A1');assert.throws(()=>validateQuery({mode:'postal',postalCode:'D1A0A6'}));assert.throws(()=>validateQuery({mode:'postal',postalCode:'123456'}));});
+test('coordinates permit arbitrary valid values and reject empty or out of range input',()=>{assert.equal(validateQuery({mode:'coordinates',latitude:'49.2827',longitude:'-123.1207'}).latitude,49.2827);for(const latitude of ['',null,undefined,'not-a-number',91])assert.throws(()=>validateQuery({mode:'coordinates',latitude,longitude:-75}));assert.throws(()=>validateQuery({mode:'coordinates',latitude:45,longitude:181}));});
+test('config expansion supports a new postal preset and a new default query',()=>{const expanded=clone(config);expanded.presets.push({mode:'postal',postalCode:'V6B1A1',label:'Vancouver postal example'});expanded.defaultQuery=expanded.presets.at(-1);assert.equal(validateConfig(expanded).presets.length,config.presets.length+1);assert.equal(requestURLs(expanded.defaultQuery,expanded).postal,'https://represent.opennorth.ca/postcodes/V6B1A1/');});
+test('config rejects unsafe API source and provider rate limit violations',()=>{assert.throws(()=>validateConfig({...config,apiBase:'https://evil.example'}));assert.throws(()=>validateConfig({...config,requestGapMs:1}));assert.throws(()=>validateConfig({...config,examplePath:'../../private.json'}));});
+test('coordinate and boundary queries use the documented different parameters',()=>{const urls=requestURLs({mode:'coordinates',latitude:44.6488,longitude:-63.5752},config);assert.equal(new URL(urls.representatives).searchParams.get('point'),'44.6488,-63.5752');assert.equal(new URL(urls.boundaries).searchParams.get('contains'),'44.6488,-63.5752');});
+test('actual saved capture has valid provenance and records',()=>{assert.equal(validateReceipt(real),real);const data=normalizeReceipt(real);assert.ok(data.representatives.length>0);assert.ok(data.boundaries.some(b=>b.linked));assert.ok(data.boundaries.some(b=>!b.linked));assert.ok(data.representatives.every(r=>r.sourceURL.startsWith('https://')));});
+test('postal concordance and centroid duplicates combine without losing match methods',()=>{const data=normalizeReceipt(postalFixture());assert.equal(data.representatives.length,real.responses.representatives.objects.length);const duplicate=data.representatives.find(r=>r.name===real.responses.representatives.objects[0].name);assert.deepEqual(duplicate.matches,['Postal centroid','Postal concordance']);assert.equal(data.boundaries.length,real.responses.boundaries.objects.length);});
+test('distinct district matches for a person are not collapsed',()=>{const fixture=postalFixture(),another=clone(fixture.responses.postal.representatives_concordance[0]);another.district_name='Another district';another.related.boundary_url='/boundaries/test/another/';fixture.responses.postal.representatives_concordance.push(another);assert.equal(normalizeReceipt(fixture).representatives.length,real.responses.representatives.objects.length+1);});
+test('invalid receipt and mismatching postal query are rejected',()=>{assert.throws(()=>validateReceipt({...real,provider:'unknown'}));assert.throws(()=>validateReceipt({...real,capturedAt:'yesterday'}));assert.throws(()=>validateReceipt({...real,sourceURLs:['https://evil.example/']}));const p=postalFixture();p.responses.postal.code='V6B1A1';assert.throws(()=>validateReceipt(p));});
+test('safe external links reject executable and credentialed URLs',()=>{for(const url of ['javascript:alert(1)','data:text/html,hello','https://u:p@example.com/','https://example.com/\n'])assert.equal(safeURL(url),'');assert.equal(providerURL('https://evil.example/'),'');assert.equal(providerURL('/boundaries/a/'),'https://represent.opennorth.ca/boundaries/a/');});
+test('pagination cannot escape provider or endpoint',()=>{assert.equal(nextPage('/representatives/?offset=100','representatives'),'https://represent.opennorth.ca/representatives/?offset=100');assert.throws(()=>nextPage('https://evil.example/x','representatives'));assert.throws(()=>nextPage('/postcodes/K1A0A6/','representatives'));});
+test('levels and text filtering preserve unknown offices',()=>{assert.equal(levelOf({elected_office:'MPP'}),'Provincial / territorial');assert.equal(levelOf({elected_office:'Trustee'}),'Other');const reps=normalizeReceipt(real).representatives;assert.equal(filterReps(reps,'Federal','').length,reps.filter(r=>r.level==='Federal').length);assert.equal(filterReps(reps,'','no-such-name-xyz').length,0);assert.ok(filterReps(reps,'',reps[0].name.toUpperCase()).length);});
+test('CSV carries retrieval provenance and neutralizes leading spreadsheet formulas',()=>{const r=clone(real);r.responses.representatives.objects[0].name='=HYPERLINK("evil")';const csv=receiptCSV(r);assert.ok(csv.includes("'=HYPERLINK"));assert.ok(csv.includes(real.capturedAt));assert.ok(csv.includes('Retrieved UTC'));});
+test('receipt JSON export and import preserve the source capture',()=>{assert.deepEqual(normalizeReceipt(JSON.parse(JSON.stringify(real))),normalizeReceipt(real));});
+test('errors distinguish network failures and timeouts',()=>{assert.match(errorMessage(new TypeError('Failed to fetch')),/network, CORS/i);assert.match(errorMessage({name:'AbortError'}),/time/);});

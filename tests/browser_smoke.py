@@ -1,10 +1,12 @@
-"""Exercise the built starter at a project subpath in Chromium."""
+"""CI-only browser checks with actual saved source data and deterministic network fixtures."""
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import json
 from pathlib import Path
 import shutil
 import tempfile
 import threading
+from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,38 +18,75 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
 
 def main():
-    screenshots = ROOT / "browser-checks"
+    screenshots = ROOT / 'browser-checks'
     screenshots.mkdir(exist_ok=True)
+    receipt = json.loads((ROOT / 'web/data/example.json').read_text())
+    expected = len(receipt['responses']['representatives']['objects'])
     with tempfile.TemporaryDirectory() as temporary:
-        shutil.copytree(ROOT / "dist", Path(temporary) / "example-tool")
-        server = ThreadingHTTPServer(("127.0.0.1", 0), partial(QuietHandler, directory=temporary))
+        shutil.copytree(ROOT / 'dist', Path(temporary) / 'civiclookup')
+        server = ThreadingHTTPServer(('127.0.0.1', 0), partial(QuietHandler, directory=temporary))
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch()
-                page = browser.new_page(viewport={"width": 1280, "height": 1000})
-                errors = []
-                page.on("pageerror", lambda error: errors.append(str(error)))
-                page.goto(f"http://127.0.0.1:{server.server_port}/example-tool/")
-                page.locator("#sample").click()
-                assert page.locator("#output").input_value() == "Halifax\nLangley\nVancouver"
-                assert "1 duplicate removed" in page.locator("#status").inner_text()
-                page.locator("#input").fill('<img src=x onerror="alert(1)">\n<img src=x onerror="alert(1)">')
-                assert page.locator("#output").input_value() == '<img src=x onerror="alert(1)">'
-                assert page.locator("img").count() == 0
-                page.locator("#clear").click()
-                assert page.locator("#output").input_value() == ""
-                page.locator("#sample").click()
-                page.screenshot(path=str(screenshots / "desktop.png"), full_page=True)
-                page.set_viewport_size({"width": 390, "height": 844})
-                assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-                page.screenshot(path=str(screenshots / "mobile.png"), full_page=True)
+                page = browser.new_page(viewport={'width': 1280, 'height': 1000})
+                errors, requests = [], []
+                page.on('pageerror', lambda error: errors.append(str(error)))
+                failing = False
+                def route_api(route):
+                    requests.append(route.request.url)
+                    if failing:
+                        route.fulfill(status=503, content_type='application/json', body='{}')
+                        return
+                    path = urlsplit(route.request.url).path
+                    kind = 'representatives' if path == '/representatives/' else 'boundaries'
+                    payload = receipt['responses'][kind]
+                    route.fulfill(status=200, content_type='application/json', headers={'Access-Control-Allow-Origin': '*'}, body=json.dumps(payload))
+                page.route('https://represent.opennorth.ca/**', route_api)
+                page.goto(f'http://127.0.0.1:{server.server_port}/civiclookup/')
+                page.wait_for_function("document.querySelectorAll('.rep-card').length > 0")
+                assert page.locator('.rep-card').count() == expected
+                assert not requests, 'Opening saved example must not send location to provider'
+                assert 'SAVED PUBLIC EXAMPLE' in page.locator('#receipt-kind').inner_text()
+                page.screenshot(path=str(screenshots / 'desktop.png'), full_page=True)
+                page.locator('#filter').fill('no-matching-name-xyz')
+                assert page.locator('.rep-card').count() == 0
+                page.locator('#filter').fill('')
+                page.locator('#latitude').fill('49.2827')
+                page.locator('#longitude').fill('-123.1207')
+                page.locator('#search-button').click()
+                page.wait_for_function("document.querySelector('#receipt-kind').textContent.includes('LIVE LOOKUP')")
+                assert len(requests) == 2
+                assert '49.2827' in requests[0] and '-123.1207' in requests[0]
+                assert '49.2827, -123.1207' == page.locator('#results-heading').inner_text()
+                assert page.locator('.rep-card').count() == expected
+                with page.expect_download() as download_info:
+                    page.locator('#export-json').click()
+                downloaded = Path(temporary) / 'receipt.json'
+                download_info.value.save_as(downloaded)
+                exported = json.loads(downloaded.read_text())
+                assert exported['query']['latitude'] == 49.2827
+                page.locator('#import-receipt').set_input_files(downloaded)
+                page.wait_for_function("document.querySelector('#receipt-kind').textContent.includes('IMPORTED')")
+                with page.expect_download() as download_info:
+                    page.locator('#export-csv').click()
+                csv_path = Path(temporary) / 'receipt.csv'
+                download_info.value.save_as(csv_path)
+                assert 'Retrieved UTC' in csv_path.read_text()
+                failing = True
+                page.locator('#search-button').click()
+                page.wait_for_function("document.querySelector('#status').textContent.includes('previous capture is unchanged')")
+                assert page.locator('.rep-card').count() == expected
+                page.locator('#load-example').click()
+                page.set_viewport_size({'width': 390, 'height': 844})
+                assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+                page.screenshot(path=str(screenshots / 'mobile.png'), full_page=True)
                 assert not errors, errors
                 browser.close()
-            print("Browser checks passed: project subpath, sample, clear, safe text and mobile layout")
+            print('Browser checks passed: saved data, no automatic location request, custom lookup, filter, export/import, error retention and mobile layout')
         finally:
             server.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

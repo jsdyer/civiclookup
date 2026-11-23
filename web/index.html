@@ -1,34 +1,26 @@
 <!doctype html>
-<html lang="en-CA">
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="{{DESCRIPTION}}">
-  <title>{{TITLE}} · CoolCode</title>
-  <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./app.mjs"></script>
-  {{VISIT_COUNTER}}
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{TITLE}} · CoolCode</title><meta name="description" content="{{DESCRIPTION}}">
+<meta name="color-scheme" content="light"><link rel="stylesheet" href="./style.css">
+{{VISIT_COUNTER}}
+<script type="module" src="./app.mjs"></script>
 </head>
-<body data-tool-id="{{TOOL_ID}}">
-  <a class="skip" href="#main">Skip to content</a>
-  <header><a href="https://coolcode.ca/">← CoolCode.ca</a><a href="{{SOURCE_URL}}">Source &amp; instructions ↗</a></header>
-  <main id="main">
-    <p class="eyebrow">Browser tool starter</p>
-    <h1>{{TITLE}}</h1>
-    <p class="intro">{{DESCRIPTION}}</p>
-    <section aria-labelledby="example-title">
-      <h2 id="example-title">Clean a list</h2>
-      <p>Trim spaces, skip blank lines and remove exact duplicates. Capitalization stays distinct.</p>
-      <div class="panels">
-        <div><label for="input">Your lines</label><textarea id="input" rows="10" maxlength="100000" spellcheck="false" placeholder="Paste one item per line"></textarea></div>
-        <div><label for="output">Cleaned lines</label><textarea id="output" rows="10" readonly spellcheck="false"></textarea></div>
-      </div>
-      <div class="actions"><button id="sample" type="button">Load example</button><button id="clear" type="button">Clear</button><button id="copy" type="button" hidden>Copy result</button></div>
-      <p id="status" role="status" aria-live="polite">Paste a list to begin.</p>
-      <noscript><p>This tool needs JavaScript to process your text. The source is available above.</p></noscript>
-    </section>
-    <aside aria-label="Privacy"><strong>Stays on your device.</strong> The browser processes your text in this tab. Reloading clears it.</aside>
-  </main>
-  <footer>Part of <a href="https://coolcode.ca/">the CoolCode collection</a>. {{ISSUE_LINK}}</footer>
-</body>
-</html>
+<body data-tool="{{TOOL_ID}}">
+<header class="topbar"><a class="brand" href="https://coolcode.ca/">CoolCode<span>.ca</span></a><nav aria-label="Main"><a href="#method">Sources &amp; coverage <span aria-hidden="true">↗</span></a><a href="{{SOURCE_URL}}">Source code</a></nav></header>
+<main>
+<section class="hero"><div><p class="eyebrow"><span class="dot"></span> THE CANADIAN CIVIC DIRECTORY</p><h1>A place.<br>Its representatives.</h1><p class="lede">Find the people and districts connected to a Canadian location. Follow the official record. Keep a dated receipt.</p></div><div class="hero-mark" aria-hidden="true"><span>CA</span><div class="grid-mark"><i></i><i></i><i></i><i></i><i></i><i></i></div><small>FEDERAL · PROVINCIAL · LOCAL</small></div></section>
+<section class="lookup" aria-labelledby="lookup-title"><div class="section-kicker"><h2 id="lookup-title">Start with a location</h2><span>01 / LOOKUP</span></div>
+<form id="lookup-form"><fieldset id="query-fields"><legend class="sr-only">Location lookup</legend><div class="mode-switch"><label><input type="radio" name="mode" value="postal" checked> Postal code</label><label><input type="radio" name="mode" value="coordinates"> Coordinates</label></div>
+<div class="query-row"><div id="postal-fields"><label for="postal-code">Canadian postal code</label><input id="postal-code" name="postal" type="text" placeholder="e.g. K1A 0A6" maxlength="12" autocapitalize="characters" autocomplete="off" spellcheck="false"></div><div id="coordinate-fields" hidden><div><label for="latitude">Latitude</label><input id="latitude" type="number" step="any" placeholder="45.4215"></div><div><label for="longitude">Longitude</label><input id="longitude" type="number" step="any" placeholder="−75.6972"></div></div><button id="search-button" class="primary" type="submit">Find representatives <span aria-hidden="true">↗</span></button></div>
+<div class="preset-row"><span>Try a city centre</span><div id="presets"></div></div></fieldset></form><p class="privacy-note">Only an explicit search sends your postal code or coordinates to Open North. No location permission, account, or saved search history.</p>
+<p id="status" role="status" aria-live="polite">Loading the saved public example…</p></section>
+<section class="results" aria-labelledby="results-heading"><div class="results-heading"><div><p id="receipt-kind" class="eyebrow">RETRIEVAL RECEIPT</p><h2 id="results-heading">Your civic directory</h2><p id="capture-summary" class="muted"></p></div><div class="export-actions"><button id="export-json" type="button" disabled>Save receipt ↓</button><button id="export-csv" type="button" disabled>Export CSV ↓</button></div></div>
+<div id="coverage-note" class="notice">Represent coverage varies by jurisdiction. Check an official legislature or council page before relying on a contact.</div>
+<div class="results-layout"><aside><div class="directory-summary"><span id="representative-count">—</span><p>representatives in this capture</p></div><h3>Government level</h3><div id="levels" class="level-list"></div><label for="filter">Filter this capture</label><input id="filter" type="search" placeholder="Name, party or district…"><div class="aside-note"><span aria-hidden="true">◉</span><p>A retrieval date tells you when we fetched the source, not when the official took office.</p></div><button id="load-example" type="button" class="text-button">Return to saved example</button></aside><div><p id="result-count" class="list-label"></p><div id="representatives" class="cards"></div><p id="empty-results" hidden>No representatives match this filter.</p></div></div>
+<details class="district-section"><summary><span>Districts &amp; boundary records</span><span id="boundary-count">0 records</span></summary><p>Records linked to a representative are shown first. Other matches can include historical boundaries, school boards and statistical areas. A geographic match does not mean a district is currently used for an election.</p><div id="boundaries"></div></details>
+<details class="receipt-section"><summary>Inspect receipt &amp; source requests</summary><p id="receipt-detail"></p><ul id="source-requests"></ul><label for="import-receipt">Open a previously saved Civic Lookup JSON receipt</label><input id="import-receipt" type="file" accept=".json,application/json"><p class="muted">Imported files are read locally. Imports are user-provided records; this tool does not authenticate their contents.</p></details></section>
+<section id="method" class="method"><div><p class="eyebrow">02 / READ THE RECORD</p><h2>Useful contacts.<br>Clear limits.</h2></div><div class="method-copy"><h3>A directory, not a voter-registration check</h3><p>Data comes from <a href="https://represent.opennorth.ca/">Represent by Open North</a>, which collects public elected-official and boundary information. Coverage and freshness differ between sources. Missing results do not mean a place has no elected representatives.</p><h3>Postal codes can cross districts</h3><p>We combine both postal-centroid and official-concordance matches and label each one. Multiple districts or representatives can apply. Use explicit coordinates to narrow the geographic match, and verify eligibility with the relevant election authority.</p><h3>Your search stays yours</h3><p>No search is stored by this app. Open North receives the location you submit and the normal connection information described in its <a href="https://represent.opennorth.ca/privacy/">privacy policy</a>. Contacts open only when you choose them. Saved receipts include your query; share them thoughtfully.</p><p><a href="https://represent.opennorth.ca/api/">API documentation ↗</a> · <a href="https://represent.opennorth.ca/representative-sets/">Available representative sets ↗</a></p></div></section>
+</main><footer><a href="https://coolcode.ca/">← More at CoolCode.ca</a><p>Civic Lookup · Public records, with context.</p>{{ISSUE_LINK}}</footer>
+</body></html>
