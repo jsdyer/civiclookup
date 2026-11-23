@@ -34,6 +34,9 @@ def main():
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 failing = False
                 def route_api(route):
+                    if route.request.method == 'OPTIONS':
+                        route.fulfill(status=204, headers={'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'accept'})
+                        return
                     requests.append(route.request.url)
                     if failing:
                         route.fulfill(status=503, content_type='application/json', body='{}')
@@ -55,8 +58,9 @@ def main():
                 page.locator('#latitude').fill('49.2827')
                 page.locator('#longitude').fill('-123.1207')
                 page.locator('#search-button').click()
-                page.wait_for_function("document.querySelector('#receipt-kind').textContent.includes('LIVE LOOKUP')")
-                assert len(requests) == 2
+                page.wait_for_function("document.querySelector('#status').textContent.startsWith('Lookup complete.') && document.querySelector('#results-heading').textContent === '49.2827, -123.1207'")
+                assert 'LIVE LOOKUP' in page.locator('#receipt-kind').inner_text()
+                assert len(requests) == 2, requests
                 assert '49.2827' in requests[0] and '-123.1207' in requests[0]
                 assert '49.2827, -123.1207' == page.locator('#results-heading').inner_text()
                 assert page.locator('.rep-card').count() == expected
