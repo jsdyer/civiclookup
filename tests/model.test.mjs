@@ -5,6 +5,9 @@ import {validateConfig,validateQuery,requestURLs,safeURL,providerURL,nextPage,le
 const config=JSON.parse(fs.readFileSync(new URL('../web/config.json',import.meta.url)));
 const real=JSON.parse(fs.readFileSync(new URL('../web/data/example.json',import.meta.url)));
 const clone=value=>JSON.parse(JSON.stringify(value));
+// Actual response from the API documentation's example /postcodes/L5G4L3/, captured 2026-11-23.
+const postalSource=JSON.parse(fs.readFileSync(new URL('./fixtures/postal-no-concordance.json',import.meta.url)));
+function actualPostalFixture(){return {...clone(real),query:{mode:'postal',postalCode:postalSource.code,label:'L5G 4L3'},responses:{postal:clone(postalSource)},sourceURLs:[`https://represent.opennorth.ca/postcodes/${postalSource.code}/`]};}
 function postalFixture(){const r=clone(real);r.query={mode:'postal',postalCode:'K1A0A6',label:'K1A 0A6'};r.responses={postal:{code:'K1A0A6',city:'OTTAWA',province:'ON',representatives_centroid:real.responses.representatives.objects,representatives_concordance:[real.responses.representatives.objects[0]],boundaries_centroid:real.responses.boundaries.objects,boundaries_concordance:[real.responses.boundaries.objects[0]]}};r.sourceURLs=['https://represent.opennorth.ca/postcodes/K1A0A6/'];return r;}
 test('normalizes arbitrary valid Canadian postal codes without a preset allowlist',()=>{assert.equal(validateQuery({mode:'postal',postalCode:' v6b 1a1 '}).postalCode,'V6B1A1');assert.throws(()=>validateQuery({mode:'postal',postalCode:'D1A0A6'}));assert.throws(()=>validateQuery({mode:'postal',postalCode:'123456'}));});
 test('coordinates permit arbitrary valid values and reject empty or out of range input',()=>{assert.equal(validateQuery({mode:'coordinates',latitude:'49.2827',longitude:'-123.1207'}).latitude,49.2827);for(const latitude of ['',null,undefined,'not-a-number',91])assert.throws(()=>validateQuery({mode:'coordinates',latitude,longitude:-75}));assert.throws(()=>validateQuery({mode:'coordinates',latitude:45,longitude:181}));});
@@ -13,6 +16,32 @@ test('config rejects unsafe API source and provider rate limit violations',()=>{
 test('coordinate and boundary queries use the documented different parameters',()=>{const urls=requestURLs({mode:'coordinates',latitude:44.6488,longitude:-63.5752},config);assert.equal(new URL(urls.representatives).searchParams.get('point'),'44.6488,-63.5752');assert.equal(new URL(urls.boundaries).searchParams.get('contains'),'44.6488,-63.5752');});
 test('actual saved capture has valid provenance and records',()=>{assert.equal(validateReceipt(real),real);const data=normalizeReceipt(real);assert.ok(data.representatives.length>0);assert.ok(data.boundaries.some(b=>b.linked));assert.ok(data.boundaries.some(b=>!b.linked));assert.ok(data.representatives.every(r=>r.sourceURL.startsWith('https://')));});
 test('postal concordance and centroid duplicates combine without losing match methods',()=>{const data=normalizeReceipt(postalFixture());assert.equal(data.representatives.length,real.responses.representatives.objects.length);const duplicate=data.representatives.find(r=>r.name===real.responses.representatives.objects[0].name);assert.deepEqual(duplicate.matches,['Postal centroid','Postal concordance']);assert.equal(data.boundaries.length,real.responses.boundaries.objects.length);});
+test('real postal response can omit concordance representatives without losing results or changing the receipt',()=>{
+ const receipt=actualPostalFixture(),before=JSON.stringify(receipt);
+ assert.ok(!Object.hasOwn(receipt.responses.postal,'representatives_concordance'));
+ const result=normalizeReceipt(receipt);
+ assert.ok(result.representatives.length>0);
+ assert.ok(result.representatives.every(r=>r.matches.join()==='Postal centroid'));
+ assert.equal(result.boundaries.length,postalSource.boundaries_centroid.length);
+ assert.equal(result.place,'MISSISSAUGA, ON');
+ assert.ok(receiptCSV(receipt).includes(result.representatives[0].name));
+ assert.equal(JSON.stringify(receipt),before);
+ assert.deepEqual(normalizeReceipt(JSON.parse(before)),result);
+});
+test('postal responses may omit either or both representative groups, including without a centroid',()=>{
+ const receipt=actualPostalFixture(),p=receipt.responses.postal;
+ p.representatives_concordance=p.representatives_centroid;delete p.representatives_centroid;delete p.centroid;
+ assert.ok(normalizeReceipt(receipt).representatives.every(r=>r.matches.join()==='Postal concordance'));
+ delete p.representatives_concordance;
+ assert.equal(normalizeReceipt(receipt).representatives.length,0);
+ assert.equal(normalizeReceipt(receipt).boundaries.length,postalSource.boundaries_centroid.length);
+});
+test('optional postal groups still reject malformed values and missing boundary arrays',()=>{
+ for(const field of ['representatives_centroid','representatives_concordance','boundaries_centroid','boundaries_concordance']){
+  for(const invalid of [null,{},'bad']){const r=actualPostalFixture();r.responses.postal[field]=invalid;assert.throws(()=>validateReceipt(r),/Postal response/);}
+ }
+ for(const field of ['boundaries_centroid','boundaries_concordance']){const r=actualPostalFixture();delete r.responses.postal[field];assert.throws(()=>validateReceipt(r),/Postal response/);}
+});
 test('distinct district matches for a person are not collapsed',()=>{const fixture=postalFixture(),another=clone(fixture.responses.postal.representatives_concordance[0]);another.district_name='Another district';another.related.boundary_url='/boundaries/test/another/';fixture.responses.postal.representatives_concordance.push(another);assert.equal(normalizeReceipt(fixture).representatives.length,real.responses.representatives.objects.length+1);});
 test('invalid receipt and mismatching postal query are rejected',()=>{assert.throws(()=>validateReceipt({...real,provider:'unknown'}));assert.throws(()=>validateReceipt({...real,capturedAt:'yesterday'}));assert.throws(()=>validateReceipt({...real,sourceURLs:['https://evil.example/']}));const p=postalFixture();p.responses.postal.code='V6B1A1';assert.throws(()=>validateReceipt(p));});
 test('safe external links reject executable and credentialed URLs',()=>{for(const url of ['javascript:alert(1)','data:text/html,hello','https://u:p@example.com/','https://example.com/\n'])assert.equal(safeURL(url),'');assert.equal(providerURL('https://evil.example/'),'');assert.equal(providerURL('/boundaries/a/'),'https://represent.opennorth.ca/boundaries/a/');});

@@ -21,6 +21,7 @@ def main():
     screenshots = ROOT / 'browser-checks'
     screenshots.mkdir(exist_ok=True)
     receipt = json.loads((ROOT / 'web/data/example.json').read_text())
+    postal = json.loads((ROOT / 'tests/fixtures/postal-no-concordance.json').read_text())
     expected = len(receipt['responses']['representatives']['objects'])
     with tempfile.TemporaryDirectory() as temporary:
         shutil.copytree(ROOT / 'dist', Path(temporary) / 'civiclookup')
@@ -33,6 +34,7 @@ def main():
                 errors, requests = [], []
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 failing = False
+                empty_postal = False
                 def route_api(route):
                     if route.request.method == 'OPTIONS':
                         route.fulfill(status=204, headers={'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'accept'})
@@ -42,8 +44,11 @@ def main():
                         route.fulfill(status=503, content_type='application/json', body='{}')
                         return
                     path = urlsplit(route.request.url).path
-                    kind = 'representatives' if path == '/representatives/' else 'boundaries'
-                    payload = receipt['responses'][kind]
+                    if path == f"/postcodes/{postal['code']}/":
+                        payload = {key: value for key, value in postal.items() if not (empty_postal and key.startswith('representatives_'))}
+                    else:
+                        kind = 'representatives' if path == '/representatives/' else 'boundaries'
+                        payload = receipt['responses'][kind]
                     route.fulfill(status=200, content_type='application/json', headers={'Access-Control-Allow-Origin': '*'}, body=json.dumps(payload))
                 page.route('https://represent.opennorth.ca/**', route_api)
                 page.goto(f'http://127.0.0.1:{server.server_port}/civiclookup/')
@@ -81,13 +86,33 @@ def main():
                 page.locator('#search-button').click()
                 page.wait_for_function("document.querySelector('#status').textContent.includes('previous capture is unchanged')")
                 assert page.locator('.rep-card').count() == expected
+                failing = False
+                page.locator('input[name="mode"][value="postal"]').check()
+                page.locator('#postal-code').fill('l5g 4l3')
+                page.locator('#search-button').click()
+                page.wait_for_function("document.querySelector('#status').textContent.startsWith('Lookup complete.') && document.querySelector('#results-heading').textContent === 'L5G 4L3'")
+                assert page.locator('.rep-card').count() > 0
+                assert postal['representatives_centroid'][0]['name'] in page.locator('#representatives').inner_text()
+                assert 'MISSISSAUGA, ON' in page.locator('#capture-summary').inner_text()
+                assert requests[-1].endswith('/postcodes/L5G4L3/')
+                with page.expect_download() as download_info:
+                    page.locator('#export-json').click()
+                postal_path = Path(temporary) / 'postal-receipt.json'
+                download_info.value.save_as(postal_path)
+                assert json.loads(postal_path.read_text())['responses']['postal'] == postal
+                empty_postal = True
+                page.locator('#search-button').click()
+                page.wait_for_function("document.querySelector('#status').textContent.startsWith('Lookup complete. 0')")
+                assert page.locator('.rep-card').count() == 0
+                assert page.locator('.boundary-row').count() > 0
+                assert page.locator('#empty-results').is_visible()
                 page.locator('#load-example').click()
                 page.set_viewport_size({'width': 390, 'height': 844})
                 assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
                 page.screenshot(path=str(screenshots / 'mobile.png'), full_page=True)
                 assert not errors, errors
                 browser.close()
-            print('Browser checks passed: saved data, no automatic location request, custom lookup, filter, export/import, error retention and mobile layout')
+            print('Browser checks passed: saved data, custom coordinates and real postal shape, missing representative groups, raw export, filter, import, error retention and mobile layout')
         finally:
             server.shutdown()
 

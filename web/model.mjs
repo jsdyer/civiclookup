@@ -73,7 +73,7 @@ export function validateReceipt(receipt) {
   if (typeof receipt.complete !== 'boolean') throw new Error('Receipt completeness is missing.');
   if (receipt.query.mode === 'postal') {
     const p = receipt.responses.postal;
-    if (!p || ['representatives_centroid','representatives_concordance','boundaries_centroid','boundaries_concordance'].some(k=>!Array.isArray(p[k]))) throw new Error('Postal response is incomplete or unrecognized.');
+    if (!p || ['boundaries_centroid','boundaries_concordance'].some(k=>!Array.isArray(p[k])) || ['representatives_centroid','representatives_concordance'].some(k=>Object.hasOwn(p,k)&&!Array.isArray(p[k]))) throw new Error('Postal response is incomplete or unrecognized.');
     if (p.code !== validateQuery(receipt.query).postalCode) throw new Error('Postal receipt does not match its query.');
   } else {
     for (const kind of ['representatives','boundaries']) if (!Array.isArray(receipt.responses[kind]?.objects)) throw new Error('Coordinate response is incomplete or unrecognized.');
@@ -86,7 +86,9 @@ export function normalizeReceipt(receipt) {
   if (receipt.query.mode === 'postal') {
     const p=receipt.responses.postal;
     for (const [field, match] of [['centroid','Postal centroid'],['concordance','Postal concordance']]) {
-      addMatches(reps,p[`representatives_${field}`],match,'representatives'); addMatches(bounds,p[`boundaries_${field}`],match,'boundaries');
+      // Represent omits a representative group when it has no matches.
+      // Preserve the original response in receipts; only the display uses an empty list.
+      addMatches(reps,array(p[`representatives_${field}`]),match,'representatives'); addMatches(bounds,p[`boundaries_${field}`],match,'boundaries');
     }
   } else {
     addMatches(reps,receipt.responses.representatives.objects,'Coordinate match','representatives');

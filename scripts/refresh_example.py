@@ -50,8 +50,14 @@ def collect(config, request=fetch, pause=time.sleep):
             sources.append(url)
             pages += 1
             if kind == 'postal':
-                for field in ['representatives_centroid', 'representatives_concordance', 'boundaries_centroid', 'boundaries_concordance']:
+                if not isinstance(raw, dict) or raw.get('code') != initial.rstrip('/').rsplit('/', 1)[-1]:
+                    raise ValueError('Postal response does not match its query')
+                for field in ['boundaries_centroid', 'boundaries_concordance']:
                     if not isinstance(raw.get(field), list):
+                        raise ValueError('Unrecognized postal response')
+                # The provider omits representative groups with no matches.
+                for field in ['representatives_centroid', 'representatives_concordance']:
+                    if field in raw and not isinstance(raw[field], list):
                         raise ValueError('Unrecognized postal response')
                 responses[kind], url = raw, None
                 break
