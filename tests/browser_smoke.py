@@ -56,10 +56,18 @@ def main():
                 assert page.locator('.rep-card').count() == expected
                 assert not requests, 'Opening saved example must not send location to provider'
                 assert 'SAVED PUBLIC EXAMPLE' in page.locator('#receipt-kind').inner_text()
+                assert page.locator('#postal-code').is_visible() and page.locator('#postal-code').input_value() == ''
+                page.set_viewport_size({'width': 390, 'height': 844})
+                assert page.locator('#postal-code').bounding_box()['y'] < 650
+                page.locator('#preview-example').click()
+                assert page.locator('#results-heading').evaluate("node => node === document.activeElement")
+                assert not requests
+                page.set_viewport_size({'width': 1280, 'height': 1000})
                 page.screenshot(path=str(screenshots / 'desktop.png'), full_page=True)
                 page.locator('#filter').fill('no-matching-name-xyz')
                 assert page.locator('.rep-card').count() == 0
                 page.locator('#filter').fill('')
+                page.locator('input[name="mode"][value="coordinates"]').check()
                 page.locator('#latitude').fill('49.2827')
                 page.locator('#longitude').fill('-123.1207')
                 page.locator('#search-button').click()

@@ -5,7 +5,7 @@ function el(tag,content,className) { const node=document.createElement(tag); if(
 function link(label,url) { const a=el('a',label); a.href=url; a.target='_blank'; a.rel='noopener noreferrer'; a.referrerPolicy='no-referrer'; return a; }
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
 function date(value){return new Date(value).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC'})+' UTC';}
-function setBusy(value){busy=value;$('query-fields').disabled=value;$('search-button').textContent=value?'Looking up…':'Find representatives ↗';$('load-example').disabled=value;$('import-receipt').disabled=value;}
+function setBusy(value){busy=value;$('query-fields').disabled=value;$('search-button').textContent=value?'Looking up…':'Find representatives ↗';$('load-example').disabled=value;$('preview-example').disabled=value;$('import-receipt').disabled=value;}
 function updateMode(){const postal=document.querySelector('input[name="mode"]:checked').value==='postal';$('postal-fields').hidden=!postal;$('coordinate-fields').hidden=postal;}
 function fillQuery(query){document.querySelector(`input[name="mode"][value="${query.mode}"]`).checked=true;if(query.mode==='postal')$('postal-code').value=query.postalCode;else{$('latitude').value=query.latitude;$('longitude').value=query.longitude;}updateMode();}
 function queryFromForm(){const mode=document.querySelector('input[name="mode"]:checked').value;return validateQuery(mode==='postal'?{mode,postalCode:$('postal-code').value}:{mode,latitude:$('latitude').value,longitude:$('longitude').value});}
@@ -46,18 +46,20 @@ function display(next,kind){const nextNormalized=normalizeReceipt(next);receipt=
   $('source-requests').replaceChildren(...receipt.sourceURLs.map(url=>{const li=el('li');li.append(link(url,url));return li;}));$('export-json').disabled=false;$('export-csv').disabled=false;
 }
 function download(content,type,name){const url=URL.createObjectURL(new Blob([content],{type})),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-async function search(query){if(busy)return;setBusy(true);status('Checking representative and boundary records with Open North…');try{const next=await collect(query);display(next,'live');status(`Lookup complete. ${normalized.representatives.length} representative records returned. Save a receipt to keep this capture.`);}catch(error){status(`${errorMessage(error)} ${receipt?'The previous capture is unchanged.':''}`,true);}finally{setBusy(false);}}
+async function search(query){if(busy)return;setBusy(true);status('Checking representative and boundary records with Open North…');try{const next=await collect(query);display(next,'live');$('results-heading').focus();status(`Lookup complete. ${normalized.representatives.length} representative records returned. Save a receipt to keep this capture.`);}catch(error){status(`${errorMessage(error)} ${receipt?'The previous capture is unchanged.':''}`,true);}finally{setBusy(false);}}
 $('lookup-form').addEventListener('submit',event=>{event.preventDefault();try{search(queryFromForm());}catch(error){status(error.message,true);}});
 document.querySelectorAll('input[name="mode"]').forEach(input=>input.onchange=updateMode);
 $('filter').oninput=()=>{if(normalized)renderCards();};
 $('export-json').onclick=()=>download(JSON.stringify(receipt,null,2)+'\n','application/json',`civiclookup-${receipt.capturedAt.slice(0,10)}.json`);
 $('export-csv').onclick=()=>download('\uFEFF'+receiptCSV(receipt),'text/csv;charset=utf-8',`civiclookup-${receipt.capturedAt.slice(0,10)}.csv`);
-$('load-example').onclick=()=>{if(example){display(example,'example');fillQuery(example.query);status('Saved public example restored. Search to get a new source response.');}};
+function viewExample(){if(!example)return;display(example,'example');$('results-heading').focus();status('Showing the saved public example. Search a location for a new response.');}
+$('preview-example').onclick=viewExample;
+$('load-example').onclick=viewExample;
 $('import-receipt').onchange=async event=>{const file=event.target.files[0];if(!file)return;try{if(file.size>config.importMaxBytes)throw new Error(`Choose a receipt smaller than ${config.importMaxBytes/1000000} MB.`);const imported=validateReceipt(JSON.parse(await file.text()));display(imported,'import');status('Receipt opened locally. Its contents have not been verified against Open North.');}catch(error){status(`Could not open receipt: ${error.message} The previous capture is unchanged.`,true);}event.target.value='';};
 async function init(){
   setBusy(true);
-  try{const response=await fetch('./config.json');if(!response.ok)throw new Error('Could not load the app configuration.');config=validateConfig(await response.json());fillQuery(config.defaultQuery);config.presets.forEach(preset=>{const button=el('button',preset.label);button.type='button';button.onclick=()=>{fillQuery(preset);status(`${preset.label} coordinates filled in. Choose Find representatives to send this lookup.`);};$('presets').append(button);});
-    const saved=await fetch(config.examplePath);if(!saved.ok)throw new Error('The saved example is unavailable. Enter a location to start a live lookup.');example=validateReceipt(await saved.json());display(example,'example');status('Showing a saved Ottawa city-centre example. Your first search can be any Canadian postal code or coordinates.');
+  try{const response=await fetch('./config.json');if(!response.ok)throw new Error('Could not load the app configuration.');config=validateConfig(await response.json());updateMode();config.presets.forEach(preset=>{const button=el('button',preset.label);button.type='button';button.onclick=()=>{fillQuery(preset);status(`${preset.label} coordinates filled in. Choose Find representatives to send this lookup.`);};$('presets').append(button);});
+    const saved=await fetch(config.examplePath);if(!saved.ok)throw new Error('The saved example is unavailable. Enter a location to start a live lookup.');example=validateReceipt(await saved.json());display(example,'example');const place=example.query.label||validateQuery(example.query).label;$('preview-example').textContent='View the saved '+place+' example';$('preview-example').hidden=false;status('Showing the saved example below. Enter your location for a new lookup.');
   }catch(error){status(error.message,true);}finally{setBusy(!config);}
 }
 init();
